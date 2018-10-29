@@ -17,6 +17,7 @@ from sklearn.utils import shuffle
 #from keras.preprocessing.image import flip_axis
 from tensorflow.keras.preprocessing.image import flip_axis
 from keras.optimizers import adam
+import pandas as pd
 
 
 def generate_training_batch(images, angles, batch_size, image_augment=True):
@@ -65,6 +66,36 @@ def get_log_data(steering_offset=0.3, include_center=True, dir_name='/ARTIFACTS/
 
     return (images, angles)
 
+def collect_carla_log_data(data_dir, log_file):
+    """
+    CARLA: collect image file names and corresponding steering angles
+    """
+    index = 0
+    drive_hist = []
+    log = data_dir + '/' + log_file
+    with open(log) as f:
+        for line in f:
+            if "Vehicle" in line:
+                s1 = line.split('),')[0]
+                co = s1.split('at (')[-1]
+                x = float(co.split(',')[0])
+                y = float(co.split(',')[-1])
+                
+                n = int(line.split('/')[-1])
+                params = {'x': x, 'y': y, 'n': n}
+                
+            if "steer" in line:
+                steer = float(line.split('steer:')[-1])
+                params['steer'] = steer
+                params['RGB_file'] = '{0}/episode_0000/CameraRGB/{1:06d}.png'.format(data_dir, n)
+                drive_hist.append(params)
+                index +=1 
+
+    df_dhist = pd.DataFrame(drive_hist)
+    df_dhist.to_csv("test.csv", index=False)
+
+    return df_dhist
+
 def augment_brightness_camera_images(image):
     """
     randomly change brightness of the image
@@ -72,7 +103,7 @@ def augment_brightness_camera_images(image):
     https://chatbotslife.com/using-augmentation-to-mimic-human-driving-496b569760a9#.aq3jet38c
     """
     image1 = cv2.cvtColor(image,cv2.COLOR_RGB2HSV)
-    image1 = np.array(image1, dtype = np.float64)
+    image1 = np.array(image1, dtype=np.float64)
     random_bright = .5+np.random.uniform()
     image1[:,:,2] = image1[:,:,2]*random_bright
     image1[:,:,2][image1[:,:,2]>255]  = 255

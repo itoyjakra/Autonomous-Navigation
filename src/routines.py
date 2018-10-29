@@ -66,6 +66,12 @@ def get_log_data(steering_offset=0.3, include_center=True, dir_name='/ARTIFACTS/
 
     return (images, angles)
 
+def build_carla_training_data(df, steering_offset):
+    """
+    create a training data after correcting for steering offset
+    """
+    return (df.RGB_file, df.steer + steering_offset)
+
 def collect_carla_log_data(data_dir, log_file):
     """
     CARLA: collect image file names and corresponding steering angles

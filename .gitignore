@@ -1,0 +1,6 @@
+DATA
+*.pyc
+*.h5
+*.pkl
+*.hd5
+.ipynb_checkpoints

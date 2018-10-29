@@ -70,7 +70,7 @@ def build_carla_training_data(df, steering_offset):
     """
     create a training data after correcting for steering offset
     """
-    return (df.RGB_file, df.steer + steering_offset)
+    return (list(df.RGB_file), list(df.steer + steering_offset))
 
 def collect_carla_log_data(data_dir, log_file):
     """
@@ -273,23 +273,24 @@ def tune_model_carla(args):
     tune model to pick the best steering offset
     """
     dir_name = args['data_dir']
-    log_file='driving_log.csv'
+    log_file = args['log_file']
     carla_image_dim = (600, 800, 3)
     carla_image_crop = (200, 100, 0, 0)
-    n_sample = 10000
+    n_sample = 1000
     n_epochs = 5
     batch_size = 32
-    offset_range = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+    offset_range = [0.0, -0.01, 0.01]
 
     for steering_offset in offset_range:
-        data = get_log_data(steering_offset=steering_offset, dir_name=dir_name, log_file=log_file, include_center=True)
+        data_df = collect_carla_log_data(dir_name, log_file)
+        data = build_carla_training_data(data_df, steering_offset)
         print ('steering offset = ', steering_offset)
         gpu_count = int(args['gpu_count'])
         if gpu_count > 1:
             model = model_nvidia(carla_image_dim, crop=carla_image_crop, gpu_count=gpu_count)
-        model_name = 'MODELS/CARLA/nvidia_model_for_carla' + '_steer_' + str(steering_offset) + '.h5'
+        model_name = 'nvidia_model_for_carla' + '_steer_' + str(steering_offset) + '.h5'
         model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size, 
-                num_samples=n_sample, validate=True, check_path='tune_history/'+model_name)
+                num_samples=n_sample, validate=True, check_path='tune_history/CARLA/'+model_name)
         training_history = 'tune_history/CARLA/nvidia_model' + '_steer_' + str(steering_offset) + '.pkl'
         print ("saving the history in %s" % training_history)
         with open(training_history, 'wb') as fid:

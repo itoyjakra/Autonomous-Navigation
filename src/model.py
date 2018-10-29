@@ -16,8 +16,10 @@ if __name__ == "__main__":
 
     data_dir = args['data_dir']
     log_file = args['log_file']
-    if  args['simulator']=='carla':
+    if args['simulator']=='carla':
         ro.collect_carla_log_data(data_dir, log_file)
+        if args['tune_model']:
+            ro.tune_model_carla(args)
     assert 1==2
 
     if  args['tune_model']:

@@ -49,7 +49,7 @@ def get_log_data(steering_offset=0.3, include_center=True, dir_name='/ARTIFACTS/
     """
     images = []
     angles = []
-    with open(dir_name+'/'+log_file) as csvfile:
+    with open(log_file) as csvfile:
         reader = csv.reader(csvfile)
         next(reader, None) # skip the header
         for center_img, left_img, right_img, steering_angle, _, _, speed in csv.reader(csvfile):
@@ -245,9 +245,11 @@ def tune_model(args):
     """
     tune model to pick the best steering offset
     """
-    #dir_name='Udacity_Data/data'
     dir_name = args['data_dir']
-    log_file='driving_log.csv'
+    log_file = args['log_file']
+    
+    image_dim = (160, 320, 3)
+    image_crop = (50, 20, 0, 0)
     n_sample = 10000
     n_epochs = 5
     batch_size = 32
@@ -255,16 +257,16 @@ def tune_model(args):
 
     for steering_offset in offset_range:
         data = get_log_data(steering_offset=steering_offset, dir_name=dir_name, log_file=log_file, include_center=True)
-        print ('steering offset = ', steering_offset)
+        print('steering offset = ', steering_offset)
         gpu_count = int(args['gpu_count'])
         if gpu_count > 1:
-            model = model_nvidia((160, 320, 3), crop=(50, 20, 0, 0), gpu_count=gpu_count)
-        #model_name = 'nvidia_model' + '_drop_0.5_steer_' + str(steering_offset) + '.h5'
-        model_name = 'nvidia_model' + '_steer_' + str(steering_offset) + '.h5'
-        model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size, 
-                num_samples=n_sample, validate=True, check_path='tune_history/'+model_name)
-        training_history = 'tune_history/nvidia_model' + '_steer_' + str(steering_offset) + '.pkl'
-        print ("saving the history in %s" % training_history)
+            model = model_nvidia(image_dim, crop=image_crop, gpu_count=gpu_count)
+        model_name = 'nvidia_model_for_mountain' + '_steer_' + str(steering_offset) + '.h5'
+        model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size,
+                                     num_samples=n_sample, validate=True,
+                                     check_path='tune_history/UDACITY_MOUNTAIN'+model_name)
+        training_history = 'tune_history/UDACITY_MOUNTAIN/nvidia_model' + '_steer_' + str(steering_offset) + '.pkl'
+        print("saving the history in %s" % training_history)
         with open(training_history, 'wb') as fid:
             pickle.dump((history.history['loss'], history.history['val_loss']), fid)
 
@@ -284,15 +286,16 @@ def tune_model_carla(args):
     for steering_offset in offset_range:
         data_df = collect_carla_log_data(dir_name, log_file)
         data = build_carla_training_data(data_df, steering_offset)
-        print ('steering offset = ', steering_offset)
+        print('steering offset = ', steering_offset)
         gpu_count = int(args['gpu_count'])
         if gpu_count > 1:
             model = model_nvidia(carla_image_dim, crop=carla_image_crop, gpu_count=gpu_count)
         model_name = 'nvidia_model_for_carla' + '_steer_' + str(steering_offset) + '.h5'
-        model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size, 
-                num_samples=n_sample, validate=True, check_path='tune_history/CARLA/'+model_name)
+        model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size,
+                                     num_samples=n_sample, validate=True,
+                                     check_path='tune_history/CARLA/'+model_name)
         training_history = 'tune_history/CARLA/nvidia_model' + '_steer_' + str(steering_offset) + '.pkl'
-        print ("saving the history in %s" % training_history)
+        print("saving the history in %s" % training_history)
         with open(training_history, 'wb') as fid:
             pickle.dump((history.history['loss'], history.history['val_loss']), fid)
 

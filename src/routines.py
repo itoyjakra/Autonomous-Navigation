@@ -59,7 +59,6 @@ def get_log_data(steering_offset, include_camera, dir_name, log_file='driving_lo
             steering_angle = float(steering_angle)
             speed = float(speed)
 
-            #include_camera = {'center': True, 'left': False, 'right': False}
             # check which camera images to include
             camera_images = []
             camera_angles = []
@@ -133,7 +132,7 @@ def model_comma_ai(camera_format, crop=None):
     """
     model developed by comma.ai: https://github.com/commaai/research
     """
-    row, col, ch = camera_format
+    row, col, col_chan = camera_format
     if crop is None:
         crop_top, crop_bot, crop_left, crop_right = 0
     else:
@@ -142,10 +141,13 @@ def model_comma_ai(camera_format, crop=None):
     col_cropped = col - crop_left - crop_right
 
     model = Sequential()
-    model.add(Cropping2D(cropping = ((crop_top, crop_bot), (crop_left, crop_right)), input_shape = (row, col, ch), data_format = "channels_last"))
+    model.add(Cropping2D(cropping=((crop_top, crop_bot), (crop_left, crop_right)),
+                         input_shape=(row, col, col_chan),
+                         data_format="channels_last"
+                        ))
     model.add(Lambda(lambda x: x/127.5 - 1.,
-                        input_shape=(row_cropped, col_cropped, ch),
-                        output_shape=(row_cropped, col_cropped, ch)))
+                     input_shape=(row_cropped, col_cropped, col_chan),
+                     output_shape=(row_cropped, col_cropped, col_chan)))
 
     model.add(Convolution2D(16, (8, 8), strides=(4, 4), padding="same"))
     model.add(ELU())
@@ -172,7 +174,7 @@ def model_nvidia(camera_format, crop=None, gpu_count=1):
     model developed by nvidia:
     https://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf
     """
-    row, col, ch = camera_format
+    row, col, col_chan = camera_format
     if crop is None:
         crop_top = crop_bot = crop_left = crop_right = 0
     else:
@@ -182,13 +184,13 @@ def model_nvidia(camera_format, crop=None, gpu_count=1):
 
     model = Sequential()
     model.add(Cropping2D(cropping=((crop_top, crop_bot), (crop_left, crop_right)),
-                         input_shape=(row, col, ch),
+                         input_shape=(row, col, col_chan),
                          data_format="channels_last"
                         ))
 
     model.add(Lambda(lambda x: x/127.5 - 1.,
-                     input_shape=(row_cropped, col_cropped, ch),
-                     output_shape=(row_cropped, col_cropped, ch))
+                     input_shape=(row_cropped, col_cropped, col_chan),
+                     output_shape=(row_cropped, col_cropped, col_chan))
              )
 
     model.add(Convolution2D(24, (5, 5), strides=(2, 2), padding="valid"))
@@ -300,6 +302,9 @@ def tune_model_carla(args):
     """
     dir_name = args['data_dir']
     log_file = args['log_file']
+    model_desc = 'nvidia_model_for_carla'
+    history_path = 'tune_history/CARLA/'
+
     carla_image_dim = (600, 800, 3)
     carla_image_crop = (200, 100, 0, 0)
     n_sample = 1000
@@ -314,11 +319,11 @@ def tune_model_carla(args):
         gpu_count = int(args['gpu_count'])
         if gpu_count > 1:
             model = model_nvidia(carla_image_dim, crop=carla_image_crop, gpu_count=gpu_count)
-        model_name = 'nvidia_model_for_carla' + '_steer_' + str(steering_offset) + '.h5'
+        model_name = model_desc + '_steer_' + str(steering_offset) + '.h5'
         model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size,
                                      num_samples=n_sample, validate=True,
-                                     check_path='tune_history/CARLA/'+model_name)
-        training_history = 'tune_history/CARLA/nvidia_model' + '_steer_' + str(steering_offset) + '.pkl'
+                                     check_path=history_path+model_name)
+        training_history = history_path + model_desc + '_steer_' + str(steering_offset) + '.pkl'
         print("saving the history in %s" % training_history)
         with open(training_history, 'wb') as fid:
             pickle.dump((history.history['loss'], history.history['val_loss']), fid)

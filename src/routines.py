@@ -86,16 +86,16 @@ def collect_carla_log_data(data_dir, log_file):
                 co = s1.split('at (')[-1]
                 x = float(co.split(',')[0])
                 y = float(co.split(',')[-1])
-                
+
                 n = int(line.split('/')[-1])
                 params = {'x': x, 'y': y, 'n': n}
-                
+
             if "steer" in line:
                 steer = float(line.split('steer:')[-1])
                 params['steer'] = steer
                 params['RGB_file'] = '{0}/episode_0000/CameraRGB/{1:06d}.png'.format(data_dir, n)
                 drive_hist.append(params)
-                index +=1 
+                index += 1
 
     df_dhist = pd.DataFrame(drive_hist)
     df_dhist.to_csv("test.csv", index=False)
@@ -105,15 +105,15 @@ def collect_carla_log_data(data_dir, log_file):
 def augment_brightness_camera_images(image):
     """
     randomly change brightness of the image
-    using code from: 
+    using code from:
     https://chatbotslife.com/using-augmentation-to-mimic-human-driving-496b569760a9#.aq3jet38c
     """
-    image1 = cv2.cvtColor(image,cv2.COLOR_RGB2HSV)
+    image1 = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
     image1 = np.array(image1, dtype=np.float64)
     random_bright = .5+np.random.uniform()
     image1[:,:,2] = image1[:,:,2]*random_bright
     image1[:,:,2][image1[:,:,2]>255]  = 255
-    image1 = np.array(image1, dtype = np.uint8)
+    image1 = np.array(image1, dtype=np.uint8)
     image1 = cv2.cvtColor(image1,cv2.COLOR_HSV2RGB)
     return image1
 
@@ -169,11 +169,15 @@ def model_nvidia(camera_format, crop=None, gpu_count=1):
     col_cropped = col - crop_left - crop_right
 
     model = Sequential()
-    model.add(Cropping2D(cropping = ((crop_top, crop_bot), (crop_left, crop_right)), input_shape = (row, col, ch), data_format = "channels_last"))
+    model.add(Cropping2D(cropping=((crop_top, crop_bot), (crop_left, crop_right)),
+                         input_shape=(row, col, ch),
+                         data_format="channels_last"
+                        ))
 
     model.add(Lambda(lambda x: x/127.5 - 1.,
-                        input_shape=(row_cropped, col_cropped, ch),
-                        output_shape=(row_cropped, col_cropped, ch)))
+                     input_shape=(row_cropped, col_cropped, ch),
+                     output_shape=(row_cropped, col_cropped, ch))
+             )
 
     model.add(Convolution2D(24, (5, 5), strides=(2, 2), padding="valid"))
     model.add(ELU())
@@ -228,16 +232,18 @@ def train_model(model, data, epochs=3, n_batch=32, validate=False, num_samples=1
         checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=True)
 
         history = model.fit_generator(train_generator,
-                        steps_per_epoch=num_train,
-                        validation_data=validation_generator,
-                        validation_steps=num_valid,
-                        callbacks=[checkpointer],
-                        epochs=epochs)
+                                      steps_per_epoch=num_train,
+                                      validation_data=validation_generator,
+                                      validation_steps=num_valid,
+                                      callbacks=[checkpointer],
+                                      epochs=epochs
+                                     )
     else:
         train_generator = generate_training_batch(X, y, batch_size=n_batch)
-        history = model.fit_generator(train_generator, 
-                        steps_per_epoch=num_samples,
-                        epochs=epochs)
+        history = model.fit_generator(train_generator,
+                                      steps_per_epoch=num_samples,
+                                      epochs=epochs
+                                     )
 
     return model, history
 
@@ -247,7 +253,9 @@ def tune_model(args):
     """
     dir_name = args['data_dir']
     log_file = args['log_file']
-    
+    model_desc = 'nvidia_model_for_mountain'
+    history_path = 'tune_history/UDACITY_MOUNTAIN/'
+
     image_dim = (160, 320, 3)
     image_crop = (50, 20, 0, 0)
     n_sample = 10000
@@ -261,11 +269,11 @@ def tune_model(args):
         gpu_count = int(args['gpu_count'])
         if gpu_count > 1:
             model = model_nvidia(image_dim, crop=image_crop, gpu_count=gpu_count)
-        model_name = 'nvidia_model_for_mountain' + '_steer_' + str(steering_offset) + '.h5'
+        model_name = model_desc + '_steer_' + str(steering_offset) + '.h5'
         model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size,
                                      num_samples=n_sample, validate=True,
-                                     check_path='tune_history/UDACITY_MOUNTAIN'+model_name)
-        training_history = 'tune_history/UDACITY_MOUNTAIN/nvidia_model' + '_steer_' + str(steering_offset) + '.pkl'
+                                     check_path=history_path+model_name)
+        training_history = history_path + model_desc + '_steer_' + str(steering_offset) + '.pkl'
         print("saving the history in %s" % training_history)
         with open(training_history, 'wb') as fid:
             pickle.dump((history.history['loss'], history.history['val_loss']), fid)

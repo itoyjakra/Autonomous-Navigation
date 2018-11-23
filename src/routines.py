@@ -43,7 +43,7 @@ def generate_training_batch(images, angles, batch_size, image_augment=True):
 
         yield (np.array(batch_images), np.array(batch_angles))
 
-def get_log_data(steering_offset=0.3, include_center=True, dir_name='/ARTIFACTS/Autonomous-Navigation/DATA/UDACITY', log_file='driving_log.csv'):
+def get_log_data(steering_offset, include_camera, dir_name, log_file='driving_log.csv'):
     """
     collect image file names and corresponding steering angles
     """
@@ -57,12 +57,24 @@ def get_log_data(steering_offset=0.3, include_center=True, dir_name='/ARTIFACTS/
             left_img = dir_name + '/' + left_img.strip()
             right_img = dir_name + '/' + right_img.strip()
             steering_angle = float(steering_angle)
-            if include_center:
-                images.extend([center_img, left_img, right_img])
-                angles.extend([steering_angle, steering_angle+steering_offset, steering_angle-steering_offset])
-            else:
-                images.extend([left_img, right_img])
-                angles.extend([steering_angle+steering_offset, steering_angle-steering_offset])
+            speed = float(speed)
+
+            #include_camera = {'center': True, 'left': False, 'right': False}
+            # check which camera images to include
+            camera_images = []
+            camera_angles = []
+            if include_camera['center']:
+                camera_images.append(center_img)
+                camera_angles.append(steering_angle)
+            if include_camera['left']:
+                camera_images.append(left_img)
+                camera_angles.append(steering_angle + steering_offset)
+            if include_camera['right']:
+                camera_images.append(right_img)
+                camera_angles.append(steering_angle - steering_offset)
+
+            images.extend(camera_images)
+            angles.extend(camera_angles)
 
     return (images, angles)
 
@@ -262,9 +274,13 @@ def tune_model(args):
     n_epochs = 5
     batch_size = 32
     offset_range = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+    include_camera = {'center': True, 'left': True, 'right': True}
+
+    offset_range = [0]
+    include_camera = {'center': True, 'left': False, 'right': False}
 
     for steering_offset in offset_range:
-        data = get_log_data(steering_offset=steering_offset, dir_name=dir_name, log_file=log_file, include_center=True)
+        data = get_log_data(steering_offset, include_camera, dir_name, log_file)
         print('steering offset = ', steering_offset)
         gpu_count = int(args['gpu_count'])
         if gpu_count > 1:
@@ -311,28 +327,28 @@ def train_single_model(args):
     """
     train a model with supplied parameters
     """
-    #dir_name='Udacity_Data/data'
     dir_name = args['data_dir']
-    log_file='driving_log.csv'
+    log_file = 'driving_log.csv'
     n_sample = 1000
     n_epochs = 60
     batch_size = 32
     best_steering_offset = 0.3 # 0.4
+    include_camera = {'center': True, 'left': False, 'right': False}
 
-    data = get_log_data(steering_offset=best_steering_offset, dir_name=dir_name, log_file=log_file, include_center=True)
+    data = get_log_data(best_steering_offset, include_camera, dir_name, log_file)
     if args['preload_model'] is not None:
         try:
             model = load_model(args['preload_model'])
         except:
-            print ("cannot find model to load")
+            print("cannot find model to load")
     else:
         model = model_nvidia((160, 320, 3), crop=(50, 20, 0, 0))
 
     model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size, num_samples=n_sample, validate=True)
-    print ("saving the model in %s" % args['save_model'])
+    print("saving the model in %s" % args['save_model'])
     model.save(args['save_model'])
-    print ("saving the history in %s" % args['save_history'])
-    print (history.history['loss'])
-    print (history.history['val_loss'])
+    print("saving the history in %s" % args['save_history'])
+    print(history.history['loss'])
+    print(history.history['val_loss'])
     with open(args['save_history'], 'wb') as fid:
         pickle.dump((history.history['loss'], history.history['val_loss']), fid)

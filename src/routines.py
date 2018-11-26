@@ -31,9 +31,10 @@ def generate_training_batch(images, angles, batch_size, image_augment=True):
             index = np.random.randint(len(angles))
             #print(images[index])
             img = cv2.imread(images[index])
-            # add random brightness
+            # add random brightness and shadow
             if image_augment:
-                img = augment_brightness_camera_images(img)
+                img = augment_brightness(img)
+                img = add_shadow(img)
             angle = angles[index]
             # randomly flip the image horizontally
             if np.random.randint(2) == 1:
@@ -134,7 +135,7 @@ def add_shadow(image):
 
     return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
 
-def augment_brightness_camera_images(image):
+def augment_brightness(image):
     """
     randomly change brightness of the image
     using code from:

@@ -29,6 +29,7 @@ def generate_training_batch(images, angles, batch_size, image_augment=True):
         batch_angles = []
         for i in range(batch_size):
             index = np.random.randint(len(angles))
+            #print(images[index])
             img = cv2.imread(images[index])
             # add random brightness
             if image_augment:
@@ -112,6 +113,26 @@ def collect_carla_log_data(data_dir, log_file):
     df_dhist.to_csv("test.csv", index=False)
 
     return df_dhist
+
+def add_shadow(image):
+    """
+    randomly add shadow to the image
+    using code from:
+    https://github.com/naokishibuya/car-behavioral-cloning/blob/master/utils.py
+    """
+    image_height, image_width, _ = image.shape
+    x1, y1 = image_width * np.random.rand(), 0
+    x2, y2 = image_width * np.random.rand(), image_height
+
+    ym, xm = np.mgrid[0:image_height, 0:image_width]
+    mask = np.zeros_like(image[:, :, 1])
+    mask[(ym - y1) * (x2 - x1) - (y2 - y1) * (xm - x1) > 0] = 1
+    cond = mask == np.random.randint(2)
+    s_ratio = np.random.uniform(low=0.2, high=0.7)
+    hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+    hls[:, :, 1][cond] = hls[:, :, 1][cond] * s_ratio
+
+    return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
 
 def augment_brightness_camera_images(image):
     """
@@ -271,15 +292,15 @@ def tune_model(args):
     history_path = 'tune_history/UDACITY_MOUNTAIN/'
 
     image_dim = (160, 320, 3)
-    image_crop = (50, 20, 0, 0)
-    n_sample = 10000
+    image_crop = (60, 20, 0, 0)
+    n_sample = 20000
     n_epochs = 5
     batch_size = 32
     offset_range = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
     include_camera = {'center': True, 'left': True, 'right': True}
 
-    offset_range = [0]
-    include_camera = {'center': True, 'left': False, 'right': False}
+    offset_range = [0.11, 0.21, 0.31, 0.41]
+    include_camera = {'center': True, 'left': True, 'right': True}
 
     for steering_offset in offset_range:
         data = get_log_data(steering_offset, include_camera, dir_name, log_file)

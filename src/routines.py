@@ -19,7 +19,7 @@ from keras.optimizers import adam
 import pandas as pd
 
 
-def generate_training_batch(images, angles, batch_size, image_augment=True):
+def generate_training_batch(images, angles, batch_size, is_training):
     """
     yield a batch of data for training
     """
@@ -35,18 +35,20 @@ def generate_training_batch(images, angles, batch_size, image_augment=True):
         batch_angles = []
         for i in range(batch_size):
             index = np.random.randint(len(angles))
-            #print(images[index])
             img = cv2.imread(images[index])
+            angle = angles[index]
+
             # add random brightness and shadow
-            if image_augment:
+            if is_training:
                 img = augment_brightness(img)
                 #img = add_shadow(img)
                 img = add_random_shadow(img, shadow_params)
-            angle = angles[index]
+
             # randomly flip the image horizontally
-            if np.random.randint(2) == 1:
+            if is_training and (np.random.randint(2) == 1):
                 img = flip_axis(img, 1)
                 angle = -angle
+
             batch_angles.append(angle)
             batch_images.append(img)
 
@@ -304,9 +306,9 @@ def train_model(model, data, epochs=3, n_batch=32, validate=False, num_samples=1
 
     if validate:
         train_X, val_X, train_y, val_y = train_test_split(X, y, test_size=0.2)
-        train_generator = generate_training_batch(train_X, train_y, batch_size=n_batch)
-        validation_generator = generate_training_batch(val_X, val_y, batch_size=n_batch)
-        checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=True)
+        train_generator = generate_training_batch(train_X, train_y, n_batch, is_training=True)
+        validation_generator = generate_training_batch(val_X, val_y, n_batch, is_training=False)
+        checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=False)
 
         history = model.fit_generator(train_generator,
                                       steps_per_epoch=num_train,
@@ -316,7 +318,7 @@ def train_model(model, data, epochs=3, n_batch=32, validate=False, num_samples=1
                                       epochs=epochs
                                      )
     else:
-        train_generator = generate_training_batch(X, y, batch_size=n_batch)
+        train_generator = generate_training_batch(X, y, batch_size=n_batch, is_training=True)
         history = model.fit_generator(train_generator,
                                       steps_per_epoch=num_samples,
                                       epochs=epochs

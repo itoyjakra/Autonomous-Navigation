@@ -1,5 +1,7 @@
 import os
 import csv
+import numpy as np
+from sklearn.model_selection import train_test_split
 import cv2
 import _pickle as pickle
 from keras import initializers
@@ -10,11 +12,8 @@ from keras.layers.convolutional import Convolution2D
 from keras.layers.pooling import MaxPooling2D
 from keras.callbacks import ModelCheckpoint
 from keras.utils import multi_gpu_model
-import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-#from keras.preprocessing.image import flip_axis
 from tensorflow.keras.preprocessing.image import flip_axis
 from keras.optimizers import adam
 import pandas as pd
@@ -24,6 +23,13 @@ def generate_training_batch(images, angles, batch_size, image_augment=True):
     """
     yield a batch of data for training
     """
+    shadow_params = {
+        'alter_prob': 0.5,
+        'y_pos': 0.6,
+        'delta_y_pos': 0.3,
+        's_low': 0.2,
+        's_high': 0.2
+        }
     while 1:
         batch_images = []
         batch_angles = []
@@ -34,7 +40,8 @@ def generate_training_batch(images, angles, batch_size, image_augment=True):
             # add random brightness and shadow
             if image_augment:
                 img = augment_brightness(img)
-                img = add_shadow(img)
+                #img = add_shadow(img)
+                img = add_random_shadow(img, shadow_params)
             angle = angles[index]
             # randomly flip the image horizontally
             if np.random.randint(2) == 1:
@@ -133,6 +140,40 @@ def add_shadow(image):
     hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
     hls[:, :, 1][cond] = hls[:, :, 1][cond] * s_ratio
 
+    return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
+
+def add_random_shadow(im, params):
+    """
+    randomly add shadow to the image
+    the shadow is cast above or below a line,
+    where the line is a deviation from horizontal located
+    around y=y_pos and the deviation is delta_y_pos
+    using code snippet from:
+    https://github.com/naokishibuya/car-behavioral-cloning/blob/master/utils.py
+    """
+    # keep image unchanged with probability of altering the image
+    if np.random.randint(2) > params['alter_prob']:
+        return im
+
+    image_height, image_width, _ = im.shape
+    f = params['y_pos'] #0.6
+    df = params['delta_y_pos'] #0.3 
+    r1 = (np.random.randint(2) * 2 - 1)
+    r2 = (np.random.randint(2) * 2 - 1)
+
+    x1, y1 = 0, image_height * f + image_height * np.random.rand() * df * r1
+    x2, y2 = image_width, image_height * f + image_height * np.random.rand() * df * r2
+
+    s_low = params['s_low'] #0.2 
+    s_high = params['s_high'] #0.2 
+
+    ym, xm = np.mgrid[0:image_height, 0:image_width]
+    mask = np.zeros_like(im[:, :, 1])
+    mask[(ym - y1) * (x2 - x1) - (y2 - y1) * (xm - x1) > 0] = 1
+    cond = mask == np.random.randint(2)
+    s_ratio = np.random.uniform(low=s_low, high=s_high)
+    hls = cv2.cvtColor(im, cv2.COLOR_RGB2HLS)
+    hls[:, :, 1][cond] = hls[:, :, 1][cond] * s_ratio
     return cv2.cvtColor(hls, cv2.COLOR_HLS2RGB)
 
 def augment_brightness(image):
@@ -297,10 +338,7 @@ def tune_model(args):
     n_sample = 20000
     n_epochs = 5
     batch_size = 32
-    offset_range = [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
-    include_camera = {'center': True, 'left': True, 'right': True}
-
-    offset_range = [0.11, 0.21, 0.31, 0.41]
+    offset_range = [0.198, 0.202, 0.208]
     include_camera = {'center': True, 'left': True, 'right': True}
 
     for steering_offset in offset_range:

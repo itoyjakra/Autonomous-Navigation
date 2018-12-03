@@ -41,8 +41,8 @@ def generate_training_batch(images, angles, batch_size, is_training):
             # add random brightness and shadow
             if is_training:
                 img = augment_brightness(img)
-                #img = add_shadow(img)
-                img = add_random_shadow(img, shadow_params)
+                img = add_shadow(img)
+                #img = add_random_shadow(img, shadow_params)
 
             # randomly flip the image horizontally
             if is_training and (np.random.randint(2) == 1):
@@ -138,7 +138,7 @@ def add_shadow(image):
     mask = np.zeros_like(image[:, :, 1])
     mask[(ym - y1) * (x2 - x1) - (y2 - y1) * (xm - x1) > 0] = 1
     cond = mask == np.random.randint(2)
-    s_ratio = np.random.uniform(low=0.2, high=0.7)
+    s_ratio = np.random.uniform(low=0.2, high=0.5)
     hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
     hls[:, :, 1][cond] = hls[:, :, 1][cond] * s_ratio
 
@@ -288,7 +288,8 @@ def model_nvidia(camera_format, crop=None, gpu_count=1):
 
     model.add(Dense(1))
 
-    adam_opt = adam(lr=0.001, decay=1.0e-6)
+    #adam_opt = adam(lr=0.001, decay=1.0e-6)
+    adam_opt = adam(lr=2e-4, decay=1.0e-6)
 
     if gpu_count > 1:
         model = multi_gpu_model(model, gpus=gpu_count)
@@ -308,7 +309,7 @@ def train_model(model, data, epochs=3, n_batch=32, validate=False, num_samples=1
         train_X, val_X, train_y, val_y = train_test_split(X, y, test_size=0.2)
         train_generator = generate_training_batch(train_X, train_y, n_batch, is_training=True)
         validation_generator = generate_training_batch(val_X, val_y, n_batch, is_training=False)
-        checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=False)
+        checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=True)
 
         history = model.fit_generator(train_generator,
                                       steps_per_epoch=num_train,
@@ -338,9 +339,9 @@ def tune_model(args):
     image_dim = (160, 320, 3)
     image_crop = (60, 20, 0, 0)
     n_sample = 20000
-    n_epochs = 5
+    n_epochs = 40
     batch_size = 32
-    offset_range = [0.198, 0.202, 0.208]
+    offset_range = [0.199, 0.211, 0.221]
     include_camera = {'center': True, 'left': True, 'right': True}
 
     for steering_offset in offset_range:

@@ -14,10 +14,66 @@ from keras.callbacks import ModelCheckpoint
 from keras.utils import multi_gpu_model
 import tensorflow as tf
 from sklearn.utils import shuffle
-from tensorflow.keras.preprocessing.image import flip_axis
 from keras.optimizers import adam
 import pandas as pd
 
+def augment_image(image):
+    """
+    """
+    image = add_shadow(image)
+    image = augment_brightness(image)
+    return image
+
+def generate_training_batch_v2(df_image_angle, params, is_training):
+    """
+    yield a batch of data for training
+    """
+    # unpack the parameters
+    batch_size = params['batch_size']
+    steering_offset = params['steering_offset']
+
+    # get all the image and angle info
+    n_angles = len(df_image_angle)
+    cameras = ['center', 'left', 'right']
+    assert set(df_image_angle.columns[:3]) == set(cameras)
+
+    while True:
+        batch_images = []
+        batch_angles = []
+        for i in range(batch_size):
+            # randomly pick an index
+            index = np.random.randint(n_angles)
+            angle = df_image_angle.loc[index, 'angle']
+
+            if is_training:
+                # randomly pick one of three camera images
+                camera_choice = cameras[np.random.choice(3)]
+                image_file = df_image_angle.loc[index, camera_choice]
+                img = cv2.imread(image_file)
+
+                if camera_choice == 'left':
+                    angle += steering_offset
+                elif camera_choice == 'right':
+                    angle -= steering_offset
+
+                # random image augmentation
+                if np.random.random() > 0.6:
+                    img = augment_image(img)
+
+                # random flip
+                if np.random.random() > 0.5:
+                    img = cv2.flip(img, 1)
+                    angle = -angle
+
+            else:
+                img = cv2.imread(df_image_angle.loc[index, 'center'])
+                batch_images.append(img)
+                batch_angles.append(angle)
+
+            batch_angles.append(angle)
+            batch_images.append(img)
+
+        yield (np.array(batch_images), np.array(batch_angles))
 
 def generate_training_batch(images, angles, batch_size, is_training):
     """
@@ -39,20 +95,32 @@ def generate_training_batch(images, angles, batch_size, is_training):
             angle = angles[index]
 
             # add random brightness and shadow
-            if is_training:
+            if is_training and (np.random.random() > 0.6):
                 img = augment_brightness(img)
-                #img = add_shadow(img)
-                img = add_random_shadow(img, shadow_params)
+                img = add_shadow(img)
+                #img = add_random_shadow(img, shadow_params)
 
             # randomly flip the image horizontally
             if is_training and (np.random.randint(2) == 1):
-                img = flip_axis(img, 1)
+                img = cv2.flip(img, 1)
                 angle = -angle
 
             batch_angles.append(angle)
             batch_images.append(img)
 
         yield (np.array(batch_images), np.array(batch_angles))
+
+def get_log_data_v2(dir_name, log_file='driving_log.csv'):
+    """
+    collect image file names and corresponding steering angles
+    """
+    df_images = pd.read_csv(log_file, header=None)
+    df_images.drop([4, 5, 6], axis=1, inplace=True)
+    df_images.columns = ['center', 'left', 'right', 'angle']
+    for col in ['center', 'left', 'right']:
+        df_images[col] = df_images[col].apply(lambda x: dir_name + '/' + x)
+
+    return df_images
 
 def get_log_data(steering_offset, include_camera, dir_name, log_file='driving_log.csv'):
     """
@@ -138,7 +206,7 @@ def add_shadow(image):
     mask = np.zeros_like(image[:, :, 1])
     mask[(ym - y1) * (x2 - x1) - (y2 - y1) * (xm - x1) > 0] = 1
     cond = mask == np.random.randint(2)
-    s_ratio = np.random.uniform(low=0.2, high=0.7)
+    s_ratio = np.random.uniform(low=0.2, high=0.5)
     hls = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
     hls[:, :, 1][cond] = hls[:, :, 1][cond] * s_ratio
 
@@ -288,7 +356,8 @@ def model_nvidia(camera_format, crop=None, gpu_count=1):
 
     model.add(Dense(1))
 
-    adam_opt = adam(lr=0.001, decay=1.0e-6)
+    #adam_opt = adam(lr=0.001, decay=1.0e-6)
+    adam_opt = adam(lr=2e-4, decay=1.0e-6)
 
     if gpu_count > 1:
         model = multi_gpu_model(model, gpus=gpu_count)
@@ -296,33 +365,37 @@ def model_nvidia(camera_format, crop=None, gpu_count=1):
 
     return model
 
-def train_model(model, data, epochs=3, n_batch=32, validate=False, num_samples=10000, check_path='dump.hd5'):
+def train_model(model, df, params, check_path):
     """
     train model on supplied data
     """
-    X, y = data
-    num_train = 0.8*num_samples
-    num_valid = 0.2*num_samples
+    par_pass = ['batch_size', 'steering_offset']
+    par_dict = {key:val for (key, val) in params.items() if key in par_pass}
 
-    if validate:
-        train_X, val_X, train_y, val_y = train_test_split(X, y, test_size=0.2)
-        train_generator = generate_training_batch(train_X, train_y, n_batch, is_training=True)
-        validation_generator = generate_training_batch(val_X, val_y, n_batch, is_training=False)
-        checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=False)
+    name = check_path.split('/')[-1]
 
-        history = model.fit_generator(train_generator,
-                                      steps_per_epoch=num_train,
-                                      validation_data=validation_generator,
-                                      validation_steps=num_valid,
-                                      callbacks=[checkpointer],
-                                      epochs=epochs
-                                     )
-    else:
-        train_generator = generate_training_batch(X, y, batch_size=n_batch, is_training=True)
-        history = model.fit_generator(train_generator,
-                                      steps_per_epoch=num_samples,
-                                      epochs=epochs
-                                     )
+    train_indices, val_indices = train_test_split(df.index, test_size=0.2)
+    df_train = df.iloc[train_indices].reset_index(drop=True)
+    df_valid = df.iloc[val_indices].reset_index(drop=True)
+    print('training with {} images'.format(len(df_train)))
+    print('validating with {} images'.format(len(df_valid)))
+
+    train_generator = generate_training_batch_v2(df_train, par_dict, is_training=True)
+    validation_generator = generate_training_batch_v2(df_valid, par_dict, is_training=False)
+    print('generators crated')
+
+    checkpointer = ModelCheckpoint(filepath=name[:-3]+'.{epoch:02d}-{val_loss:.3f}.hdf5',
+                                   monitor='val_loss',
+                                   mode='min',
+                                   verbose=1,
+                                   save_best_only=True)
+
+    history = model.fit_generator(train_generator,
+                                  steps_per_epoch=params['train_samples_per_epoch'],
+                                  validation_data=validation_generator,
+                                  validation_steps=params['valid_samples_per_epoch'],
+                                  callbacks=[checkpointer],
+                                  epochs=params['n_epochs'])
 
     return model, history
 
@@ -334,24 +407,42 @@ def tune_model(args):
     log_file = args['log_file']
     model_desc = 'nvidia_model_for_mountain'
     history_path = 'tune_history/UDACITY_MOUNTAIN/'
+    gpu_count = int(args['gpu_count'])
 
     image_dim = (160, 320, 3)
     image_crop = (60, 20, 0, 0)
-    n_sample = 20000
-    n_epochs = 5
-    batch_size = 32
-    offset_range = [0.198, 0.202, 0.208]
-    include_camera = {'center': True, 'left': True, 'right': True}
 
-    for steering_offset in offset_range:
-        data = get_log_data(steering_offset, include_camera, dir_name, log_file)
-        print('steering offset = ', steering_offset)
-        gpu_count = int(args['gpu_count'])
+    training_params = {'batch_size': 32,
+                       'train_samples_per_epoch': 10000,
+                       'valid_samples_per_epoch': 2000,
+                       'n_epochs': 30
+                      }
+    offset_range = [0.2001]
+    #include_camera = {'center': False, 'left': True, 'right': True}
+
+    # get the image file name and the corresponding angles
+    df_data = get_log_data_v2(dir_name, log_file)
+    print('shape of training data: ', df_data.shape)
+
+    if args['preload_model'] is not None:
+        try:
+            model = load_model(args['preload_model'])
+            print('using pretrained model: ', args['preload_model'])
+        except:
+            print("cannot find model to load")
+    else:
         if gpu_count > 1:
             model = model_nvidia(image_dim, crop=image_crop, gpu_count=gpu_count)
+
+    for steering_offset in offset_range:
+        print('steering offset = ', steering_offset)
+        training_params['steering_offset'] = steering_offset
+
+        #gpu_count = int(args['gpu_count'])
+        #if gpu_count > 1:
+        #    model = model_nvidia(image_dim, crop=image_crop, gpu_count=gpu_count)
         model_name = model_desc + '_steer_' + str(steering_offset) + '.h5'
-        model, history = train_model(model, data, epochs=n_epochs, n_batch=batch_size,
-                                     num_samples=n_sample, validate=True,
+        model, history = train_model(model, df_data, training_params,
                                      check_path=history_path+model_name)
         training_history = history_path + model_desc + '_steer_' + str(steering_offset) + '.pkl'
         print("saving the history in %s" % training_history)

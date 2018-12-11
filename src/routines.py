@@ -23,7 +23,7 @@ def preprocess_image(image):
     both for training and inference
     cropping can be included here eventually
     """
-    image = cv2.cvtColor(ic, cv2.COLOR_RGB2YUV)
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
     return image
 
 def augment_image(image):

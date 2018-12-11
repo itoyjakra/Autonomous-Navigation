@@ -369,7 +369,6 @@ def train_model(model, df, params, check_path):
     """
     train model on supplied data
     """
-<<<<<<< HEAD
     par_pass = ['batch_size', 'steering_offset']
     par_dict = {key:val for (key, val) in params.items() if key in par_pass}
 
@@ -383,7 +382,6 @@ def train_model(model, df, params, check_path):
 
     train_generator = generate_training_batch_v2(df_train, par_dict, is_training=True)
     validation_generator = generate_training_batch_v2(df_valid, par_dict, is_training=False)
-    print('generators crated')
 
     checkpointer = ModelCheckpoint(filepath=name[:-3]+'.{epoch:02d}-{val_loss:.3f}.hdf5',
                                    monitor='val_loss',
@@ -397,31 +395,6 @@ def train_model(model, df, params, check_path):
                                   validation_steps=params['valid_samples_per_epoch'],
                                   callbacks=[checkpointer],
                                   epochs=params['n_epochs'])
-=======
-    X, y = data
-    num_train = 0.8*num_samples
-    num_valid = 0.2*num_samples
-
-    if validate:
-        train_X, val_X, train_y, val_y = train_test_split(X, y, test_size=0.2)
-        train_generator = generate_training_batch(train_X, train_y, n_batch, is_training=True)
-        validation_generator = generate_training_batch(val_X, val_y, n_batch, is_training=False)
-        checkpointer = ModelCheckpoint(filepath=check_path, verbose=1, save_best_only=True)
-
-        history = model.fit_generator(train_generator,
-                                      steps_per_epoch=num_train,
-                                      validation_data=validation_generator,
-                                      validation_steps=num_valid,
-                                      callbacks=[checkpointer],
-                                      epochs=epochs
-                                     )
-    else:
-        train_generator = generate_training_batch(X, y, batch_size=n_batch, is_training=True)
-        history = model.fit_generator(train_generator,
-                                      steps_per_epoch=num_samples,
-                                      epochs=epochs
-                                     )
->>>>>>> 92be2ebceb8d5496f523f1647cbc2b6439496206
 
     return model, history
 
@@ -431,20 +404,12 @@ def tune_model(args):
     """
     dir_name = args['data_dir']
     log_file = args['log_file']
-    model_desc = 'nvidia_model_for_mountain'
+    model_desc = 'yuv_nvidia_model_for_mountain'
     history_path = 'tune_history/UDACITY_MOUNTAIN/'
     gpu_count = int(args['gpu_count'])
 
     image_dim = (160, 320, 3)
     image_crop = (60, 20, 0, 0)
-<<<<<<< HEAD
-=======
-    n_sample = 20000
-    n_epochs = 40
-    batch_size = 32
-    offset_range = [0.199, 0.211, 0.221]
-    include_camera = {'center': True, 'left': True, 'right': True}
->>>>>>> 92be2ebceb8d5496f523f1647cbc2b6439496206
 
     training_params = {'batch_size': 32,
                        'train_samples_per_epoch': 10000,
@@ -472,9 +437,6 @@ def tune_model(args):
         print('steering offset = ', steering_offset)
         training_params['steering_offset'] = steering_offset
 
-        #gpu_count = int(args['gpu_count'])
-        #if gpu_count > 1:
-        #    model = model_nvidia(image_dim, crop=image_crop, gpu_count=gpu_count)
         model_name = model_desc + '_steer_' + str(steering_offset) + '.h5'
         model, history = train_model(model, df_data, training_params,
                                      check_path=history_path+model_name)

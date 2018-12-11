@@ -17,6 +17,15 @@ from sklearn.utils import shuffle
 from keras.optimizers import adam
 import pandas as pd
 
+def preprocess_image(image):
+    """
+    include all the preprocessing steps required
+    both for training and inference
+    cropping can be included here eventually
+    """
+    image = cv2.cvtColor(ic, cv2.COLOR_RGB2YUV)
+    return image
+
 def augment_image(image):
     """
     """
@@ -50,6 +59,7 @@ def generate_training_batch_v2(df_image_angle, params, is_training):
                 camera_choice = cameras[np.random.choice(3)]
                 image_file = df_image_angle.loc[index, camera_choice]
                 img = cv2.imread(image_file)
+                img = preprocess_image(img)
 
                 if camera_choice == 'left':
                     angle += steering_offset
@@ -67,6 +77,7 @@ def generate_training_batch_v2(df_image_angle, params, is_training):
 
             else:
                 img = cv2.imread(df_image_angle.loc[index, 'center'])
+                img = preprocess_image(img)
                 batch_images.append(img)
                 batch_angles.append(angle)
 

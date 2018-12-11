@@ -3,6 +3,7 @@ import base64
 from datetime import datetime
 import os
 import shutil
+import routines as ro
 
 import numpy as np
 import socketio
@@ -75,6 +76,7 @@ def telemetry(sid, data):
         imgString = data["image"]
         image = Image.open(BytesIO(base64.b64decode(imgString)))
         image_array = np.asarray(image)
+        image_array = ro.preprocess_image(image_array)
         #row, col, ch = image_array.shape
         #image_array = image_array[50:row-20]
         steering_angle = float(model.predict(image_array[None, :, :, :], batch_size=1))

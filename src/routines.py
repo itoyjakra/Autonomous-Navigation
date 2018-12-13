@@ -78,8 +78,6 @@ def generate_training_batch_v2(df_image_angle, params, is_training):
             else:
                 img = cv2.imread(df_image_angle.loc[index, 'center'])
                 img = preprocess_image(img)
-                batch_images.append(img)
-                batch_angles.append(angle)
 
             batch_angles.append(angle)
             batch_images.append(img)

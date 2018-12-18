@@ -17,13 +17,64 @@ from sklearn.utils import shuffle
 from keras.optimizers import adam
 import pandas as pd
 
+def channel_filter(img, filters, scheme='RGB'):
+    """
+    applies a filter to the image
+    """
+    image, channels = get_channels(img, scheme)
+
+    ch_0 = image[:, :, 0]
+    ch_1 = image[:, :, 1]
+    ch_2 = image[:, :, 2]
+
+    binary = np.zeros_like(ch_0)
+
+    for key, thresh in filters.items():
+        lower, upper = thresh
+        if key == channels[0]:
+            binary[(ch_0 > lower) & (ch_0 <= upper)] = 1
+        if key == channels[1]:
+            binary[(ch_1 > lower) & (ch_1 <= upper)] = 1
+        if key == channels[2]:
+            binary[(ch_2 > lower) & (ch_2 <= upper)] = 1
+
+    x, y = binary.shape
+    binimg = np.zeros([x, y, 3])
+    binimg[:,:,0] = binary
+    binimg[:,:,1] = binary
+    binimg[:,:,2] = binary
+    return binimg
+
+def get_channels(image, scheme='RGB'):
+    """
+    transforms image into another scheme and get the channels
+    """
+
+    if scheme == 'HLS':
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+        channels = ['H', 'L', 'S']
+    elif scheme == 'HSV':
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+        channels = ['H', 'S', 'V']
+    else:
+        channels = ['R', 'G', 'B']
+
+    return image, channels
+
 def preprocess_image(image):
     """
     include all the preprocessing steps required
     both for training and inference
     cropping can be included here eventually
     """
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+    #image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+    HSV_filter = {'H': [200, 250],
+                  'S': [0, 30],
+                  'V': [40, 100]}
+    RGB_filter = {'R': [200, 255],
+                  'G': [200, 255],
+                  'B': [70, 100]}
+    image = channel_filter(image, RGB_filter, scheme='RGB')
     return image
 
 def augment_image(image):
@@ -67,7 +118,7 @@ def generate_training_batch_v2(df_image_angle, params, is_training):
                     angle -= steering_offset
 
                 # random image augmentation
-                if np.random.random() > 0.6:
+                if np.random.random() > 1.0:
                     img = augment_image(img)
 
                 # random flip
@@ -78,8 +129,6 @@ def generate_training_batch_v2(df_image_angle, params, is_training):
             else:
                 img = cv2.imread(df_image_angle.loc[index, 'center'])
                 img = preprocess_image(img)
-                batch_images.append(img)
-                batch_angles.append(angle)
 
             batch_angles.append(angle)
             batch_images.append(img)
@@ -385,7 +434,7 @@ def train_model(model, df, params, check_path):
 
     name = check_path.split('/')[-1]
 
-    train_indices, val_indices = train_test_split(df.index, test_size=0.2)
+    train_indices, val_indices = train_test_split(df.index, test_size=0.2, random_state=44)
     df_train = df.iloc[train_indices].reset_index(drop=True)
     df_valid = df.iloc[val_indices].reset_index(drop=True)
     print('training with {} images'.format(len(df_train)))
@@ -415,7 +464,7 @@ def tune_model(args):
     """
     dir_name = args['data_dir']
     log_file = args['log_file']
-    model_desc = 'yuv_nvidia_model_for_mountain'
+    model_desc = 'RGB_filer_nvidia_model_for_mountain'
     history_path = 'tune_history/UDACITY_MOUNTAIN/'
     gpu_count = int(args['gpu_count'])
 
@@ -427,7 +476,7 @@ def tune_model(args):
                        'valid_samples_per_epoch': 2000,
                        'n_epochs': 30
                       }
-    offset_range = [0.2001]
+    offset_range = [0.1951]
     #include_camera = {'center': False, 'left': True, 'right': True}
 
     # get the image file name and the corresponding angles
